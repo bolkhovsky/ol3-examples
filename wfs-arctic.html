@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+    <meta charset="UTF-8">
+    <title>WFS test page</title>
+    <link rel="stylesheet" href="http://ol3js.org/en/master/css/ol.css" type="text/css">
+    <script src=".static/js/proj4.js"></script>
+    <script src=".static/js/jquery-2.1.1.min.js"></script>
+    <!--<script src="https://raw.githubusercontent.com/nd0ut/ol3-bower/master/ol-debug.js" type="text/javascript"></script>-->
+     <script src="http://ol3js.org/en/master/build/ol.js" type="text/javascript"></script>
+    <style>
+        #map {
+            height: 400px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <h1>WFS test page</h1>
+    <div id="map"></div>
+    <script>
+            proj4.defs([
+                [ 'EPSG:3413', '+proj=stere +lat_0=90 +lat_ts=70 +lon_0=-45 +k=1 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs'],
+                [ 'EPSG:4326', '+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs' ]
+            ]);
+            var vectorSource = new ol.source.ServerVector({
+              format: new ol.format.GeoJSON(),
+              loader: function(extent, resolution, projection) {
+                var url = 'http://127.0.0.1:8001/gfs.t06z.master.grbf00.10m.uv.grib2.wfs?service=WFS&' +
+                  'version=1.1.0&request=GetFeature&layer=UGRD_P0_L103_GLL0,VGRD_P0_L103_GLL0&' +
+                  'outputFormat=jsonp' + '&srsname=EPSG:3413&bbox=' + extent.join(',');
+                $.ajax({
+                  url: url,
+                  dataType: 'jsonp',
+                  timeout: 60000 // 1 minute timeout
+                }).done(function(response) {
+                    var features = vectorSource.readFeatures(response);
+                    vectorSource.addFeatures(features);
+                });
+              }
+            });
+
+            var image = new ol.style.Circle({
+              radius: 1,
+              fill: new ol.style.Fill({
+                  color: 'rgba(255, 255, 0, 0.1)'
+              }),
+              stroke: new ol.style.Stroke({color: 'red', width: 1})
+            });
+
+            var styles = {
+              'Point': [new ol.style.Style({
+                image: image
+              })],
+              'Circle': [new ol.style.Style({
+                stroke: new ol.style.Stroke({
+                  color: 'red',
+                  width: 2
+                }),
+                fill: new ol.style.Fill({
+                  color: 'rgba(255,0,0,0.2)'
+                })
+              })]
+            };
+
+            var styleFunction = function(feature, resolution) {
+              return styles[feature.getGeometry().getType()];
+            };
+
+            var vector = new ol.layer.Vector({
+              source: vectorSource,
+              style: styleFunction
+            });
+
+            //var extent = [-5000000,-5000000,5000000,5000000];
+            var extent = [-26000000,-26000000,26000000,26000000];
+            var config = {
+              projection: new ol.proj.Projection({
+                code: 'EPSG:3413',
+                extent: extent
+              }),
+              extent: extent
+            };
+
+            //var layers = defineOverlays();
+            var layers = [];
+            layers.push(vector);
+            var map = new ol.Map({
+                target: 'map',
+                renderer: 'canvas',
+                layers: layers,
+                view: new ol.View({
+                  projection: config.projection,
+                  center: ol.extent.getCenter(config.projection.getExtent()),
+                  zoom: 1
+                })
+              });
+            map.getView().on('change:resolution',
+                    function(){
+                        vectorSource.clear();
+                    });
+
+            function defineOverlays() {
+                var portalOverlays = [];
+                var coastlinesLayerInfo = {
+                    uri: "http://media.satin.rshu.ru/siows/output/Arctic/nw_siows/coastlines/",
+                    resolutions: [64000, 32000, 16000, 8000, 4000, 2000, 1000, 500],
+                    mapMinZoom: 0,
+                    mapMaxZoom: 7 //7
+                };
+                var coastlinesLayer = createTMSLayer(coastlinesLayerInfo);
+                portalOverlays.push(coastlinesLayer);
+                return portalOverlays;
+            }
+
+            function createTMSLayer(info) {
+                return new ol.layer.Tile({
+                    extent: [-5000000, -5000000, 5000000, 5000000],
+                    source: new ol.source.XYZ({
+                        tileUrlFunction: function(coordinate) {
+                            if(coordinate === null) {
+                                return null;
+                            }
+                            var z = coordinate.a;
+                            var x = coordinate.x;
+                            var y = coordinate.y;
+                            return info.uri + '{z}/{x}/{y}.png'
+                                    .replace('{z}', z)
+                                    .replace('{x}', x)
+                                    .replace('{y}', y);
+                        },
+                        projection: config.projection,
+                        maxZoom: 7
+                        })
+                    });
+            }
+    </script>
+</body>
+</html>
